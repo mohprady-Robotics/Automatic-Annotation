@@ -59,6 +59,16 @@ const clearSamClicksBtn = document.getElementById("clearSamClicksBtn");
 const addSamMaskBtn = document.getElementById("addSamMaskBtn");
 const samClicksInfo = document.getElementById("samClicksInfo");
 
+async function parseApiResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    return { detail: text };
+  }
+}
+
 function setStatus(text) {
   statusText.textContent = `Status: ${text}`;
 }
@@ -614,7 +624,7 @@ loadSessionBtn.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ image_dir: imageDir }),
     });
-    const payload = await response.json();
+    const payload = await parseApiResponse(response);
     if (!response.ok) {
       throw new Error(payload.detail || "Failed to create session.");
     }
@@ -671,7 +681,7 @@ detectOpenVocabBtn.addEventListener("click", async () => {
         use_sam_masks: Boolean(openVocabUseSamMasksInput.checked),
       }),
     });
-    const payload = await response.json();
+    const payload = await parseApiResponse(response);
     if (!response.ok) {
       throw new Error(payload.detail || "Open-vocab detection failed.");
     }
@@ -790,7 +800,7 @@ runSamRefineBtn.addEventListener("click", async () => {
         input_box: inputBox,
       }),
     });
-    const payload = await response.json();
+    const payload = await parseApiResponse(response);
     if (!response.ok) {
       throw new Error(payload.detail || "SAM refinement failed.");
     }
@@ -854,7 +864,7 @@ propagateBtn.addEventListener("click", async () => {
         annotations: keyFrameAnnotations,
       }),
     });
-    const payload = await response.json();
+    const payload = await parseApiResponse(response);
     if (!response.ok) {
       throw new Error(payload.detail || "Propagation failed.");
     }
@@ -889,7 +899,7 @@ exportBtn.addEventListener("click", async () => {
         annotations_by_frame: state.annotationsByFrame,
       }),
     });
-    const payload = await response.json();
+    const payload = await parseApiResponse(response);
     if (!response.ok) {
       throw new Error(payload.detail || "Export failed.");
     }

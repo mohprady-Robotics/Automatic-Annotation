@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -201,25 +202,51 @@ def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectRespons
         )
 
     normalized: List[OpenVocabDetection] = []
-    for det_label, bbox, score, polygon in detections:
-        x1, y1, x2, y2 = bbox
+    for detection in detections:
+        # Backward-compatible unpacking (older detection helper may return 3-tuples).
+        if len(detection) == 4:
+            det_label, bbox, score, polygon = detection
+        elif len(detection) == 3:
+            det_label, bbox, score = detection
+            polygon = None
+        else:
+            continue
+        if not bbox or len(bbox) < 4:
+            continue
+        x1, y1, x2, y2 = [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])]
+        if not all(math.isfinite(v) for v in [x1, y1, x2, y2]):
+            continue
         x1 = max(0.0, min(x1, session.width - 1))
         y1 = max(0.0, min(y1, session.height - 1))
         x2 = max(x1 + 1.0, min(x2, session.width))
         y2 = max(y1 + 1.0, min(y2, session.height))
+        score_value = float(score)
+        if not math.isfinite(score_value):
+            continue
+        score_value = max(0.0, min(1.0, score_value))
+        label_value = str(det_label).strip() or "detected_object"
         normalized_polygon = None
         if polygon and len(polygon) >= 3:
-            normalized_polygon = [
-                [
-                    max(0.0, min(float(point[0]), session.width - 1)),
-                    max(0.0, min(float(point[1]), session.height - 1)),
-                ]
-                for point in polygon
-            ]
+            normalized_polygon_points = []
+            for point in polygon:
+                if len(point) < 2:
+                    continue
+                px = float(point[0])
+                py = float(point[1])
+                if not (math.isfinite(px) and math.isfinite(py)):
+                    continue
+                normalized_polygon_points.append(
+                    [
+                        max(0.0, min(px, session.width - 1)),
+                        max(0.0, min(py, session.height - 1)),
+                    ]
+                )
+            if len(normalized_polygon_points) >= 3:
+                normalized_polygon = normalized_polygon_points
         normalized.append(
             OpenVocabDetection(
-                label=det_label,
-                score=float(score),
+                label=label_value,
+                score=score_value,
                 bbox=[x1, y1, x2, y2],
                 polygon=normalized_polygon,
             )
