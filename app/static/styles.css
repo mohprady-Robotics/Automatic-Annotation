@@ -1,0 +1,149 @@
+* {
+  box-sizing: border-box;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f4f6fb;
+  color: #1f2937;
+}
+
+header {
+  padding: 16px 20px;
+  background: #111827;
+  color: #f9fafb;
+}
+
+header h1 {
+  margin: 0 0 8px 0;
+}
+
+header p {
+  margin: 0;
+  opacity: 0.9;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.panel h2 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+input[type="text"] {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+button {
+  border: 1px solid #2563eb;
+  background: #3b82f6;
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+
+button:hover {
+  background: #2563eb;
+}
+
+.tool-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tool-btn {
+  background: #dbeafe;
+  color: #1e3a8a;
+  border-color: #93c5fd;
+}
+
+.tool-btn.active {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.hint {
+  font-size: 12px;
+  color: #4b5563;
+  margin: 6px 0 0 0;
+}
+
+.viewer {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.frame-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.canvas-container {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: calc(100vh - 220px);
+  background: #0f172a;
+}
+
+canvas {
+  display: block;
+  margin: 0 auto;
+  cursor: crosshair;
+}
+
+.annotations-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+#annotationList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.annotation-row {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 13px;
+  background: #f9fafb;
+}
