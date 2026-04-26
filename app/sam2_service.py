@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 from PIL import Image
 
+from app.grounding_dino_service import detect_boxes_for_labels
 from app.models import Annotation
 
 
@@ -74,7 +75,80 @@ def _compute_shift(prev_gray: np.ndarray, curr_gray: np.ndarray, max_shift: int 
     return best_shift
 
 
-def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annotations: List[Annotation]) -> Dict[int, List[Annotation]]:
+def _iou_xyxy(box_a: List[float], box_b: List[float]) -> float:
+    ax1, ay1, ax2, ay2 = box_a
+    bx1, by1, bx2, by2 = box_b
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+    inter_w = max(0.0, inter_x2 - inter_x1)
+    inter_h = max(0.0, inter_y2 - inter_y1)
+    inter = inter_w * inter_h
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, (ax2 - ax1)) * max(0.0, (ay2 - ay1))
+    area_b = max(0.0, (bx2 - bx1)) * max(0.0, (by2 - by1))
+    union = area_a + area_b - inter
+    if union <= 0.0:
+        return 0.0
+    return inter / union
+
+
+def _refine_with_grounding_dino(
+    frame_path: str,
+    states: List[_TrackerState],
+    width: int,
+    height: int,
+) -> bool:
+    labels = [state.label for state in states]
+    detections = detect_boxes_for_labels(frame_path=frame_path, labels=labels)
+    if not detections:
+        return False
+
+    used_detection_idx: Dict[str, set[int]] = {}
+    any_refined = False
+    min_iou = float(os.getenv("GROUNDING_DINO_MIN_IOU", "0.05"))
+    blend = float(os.getenv("GROUNDING_DINO_BLEND", "0.70"))
+    score_weight = float(os.getenv("GROUNDING_DINO_SCORE_WEIGHT", "0.20"))
+
+    for state in states:
+        label_key = " ".join(state.label.strip().lower().split())
+        candidates = detections.get(label_key, [])
+        if not candidates:
+            continue
+
+        best_idx = -1
+        best_score = -1.0
+        best_iou = -1.0
+        best_box = None
+        for idx, (candidate_box, det_score) in enumerate(candidates):
+            if idx in used_detection_idx.setdefault(label_key, set()):
+                continue
+            candidate_clamped = _clamp_bbox(candidate_box, width, height)
+            iou = _iou_xyxy(state.bbox, candidate_clamped)
+            combined_score = iou + score_weight * float(det_score)
+            if combined_score > best_score:
+                best_score = combined_score
+                best_iou = iou
+                best_idx = idx
+                best_box = candidate_clamped
+
+        if best_box is None or best_iou < min_iou:
+            continue
+
+        x1 = state.bbox[0] * (1.0 - blend) + best_box[0] * blend
+        y1 = state.bbox[1] * (1.0 - blend) + best_box[1] * blend
+        x2 = state.bbox[2] * (1.0 - blend) + best_box[2] * blend
+        y2 = state.bbox[3] * (1.0 - blend) + best_box[3] * blend
+        state.bbox = _clamp_bbox([x1, y1, x2, y2], width, height)
+        used_detection_idx[label_key].add(best_idx)
+        any_refined = True
+
+    return any_refined
+
+
+def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annotations: List[Annotation]) -> tuple[Dict[int, List[Annotation]], bool]:
     with Image.open(frame_paths[key_frame_index]) as key_image:
         width, height = key_image.size
 
@@ -90,6 +164,7 @@ def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annota
     ]
 
     result: Dict[int, List[Annotation]] = {}
+    grounding_used = False
 
     for frame_index, _ in enumerate(frame_paths):
         if frame_index == key_frame_index:
@@ -127,6 +202,15 @@ def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annota
             shifted = [state.bbox[0] + dx, state.bbox[1] + dy, state.bbox[2] + dx, state.bbox[3] + dy]
             clamped = _clamp_bbox(shifted, width, height)
             state.bbox = clamped
+        frame_refined = _refine_with_grounding_dino(
+            frame_path=frame_paths[frame_index],
+            states=states_fwd,
+            width=width,
+            height=height,
+        )
+        if frame_refined:
+            grounding_used = True
+        for state in states_fwd:
             frame_annotations.append(
                 Annotation(
                     id=f"{state.track_id}_{frame_index}",
@@ -134,8 +218,8 @@ def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annota
                     label=state.label,
                     frame_index=frame_index,
                     shape_type="bbox",
-                    source="sam2_fallback",
-                    bbox=clamped,
+                    source="sam2_fallback_grounding_dino" if frame_refined else "sam2_fallback",
+                    bbox=state.bbox,
                     polygon=None,
                 )
             )
@@ -162,6 +246,15 @@ def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annota
             shifted = [state.bbox[0] + dx, state.bbox[1] + dy, state.bbox[2] + dx, state.bbox[3] + dy]
             clamped = _clamp_bbox(shifted, width, height)
             state.bbox = clamped
+        frame_refined = _refine_with_grounding_dino(
+            frame_path=frame_paths[frame_index],
+            states=states_bwd,
+            width=width,
+            height=height,
+        )
+        if frame_refined:
+            grounding_used = True
+        for state in states_bwd:
             frame_annotations.append(
                 Annotation(
                     id=f"{state.track_id}_{frame_index}",
@@ -169,15 +262,15 @@ def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annota
                     label=state.label,
                     frame_index=frame_index,
                     shape_type="bbox",
-                    source="sam2_fallback",
-                    bbox=clamped,
+                    source="sam2_fallback_grounding_dino" if frame_refined else "sam2_fallback",
+                    bbox=state.bbox,
                     polygon=None,
                 )
             )
         result[frame_index] = frame_annotations
         prev_gray = curr_gray
 
-    return result
+    return result, grounding_used
 
 
 def _try_import_sam2() -> bool:
@@ -393,5 +486,7 @@ def propagate_annotations(
     if sam2_result is not None:
         return "sam2", sam2_result
 
-    result = _propagate_fallback(normalized_paths, key_frame_index, key_annotations)
+    result, grounding_used = _propagate_fallback(normalized_paths, key_frame_index, key_annotations)
+    if grounding_used:
+        return "sam2_fallback_grounding_dino", result
     return "sam2_fallback", result

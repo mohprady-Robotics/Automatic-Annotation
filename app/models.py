@@ -14,7 +14,7 @@ class Annotation(BaseModel):
     label: str = Field(min_length=1)
     frame_index: int = Field(ge=0)
     shape_type: ShapeType
-    source: Literal["manual", "sam2", "sam2_fallback"] = "manual"
+    source: Literal["manual", "sam2", "sam2_fallback", "sam2_fallback_grounding_dino"] = "manual"
     bbox: Optional[List[float]] = None
     polygon: Optional[List[List[float]]] = None
 
@@ -49,7 +49,7 @@ class PropagateRequest(BaseModel):
 
 class PropagateResponse(BaseModel):
     session_id: str
-    backend: Literal["sam2", "sam2_fallback"]
+    backend: Literal["sam2", "sam2_fallback", "sam2_fallback_grounding_dino"]
     frames: Dict[str, List[Annotation]]
 
 

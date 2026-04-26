@@ -9,6 +9,7 @@ This project provides a local webapp for batch image annotation with:
 - A **Propagate** action that applies SAM2-style propagation to all frames in the batch
   - Uses real SAM2 when configured
   - Falls back to a built-in tracker if SAM2 is not available
+  - Optional Grounding DINO refinement can improve box accuracy in fallback mode
 - Manual cleanup after propagation (delete/add annotations)
 - JSON export containing:
   - all per-frame annotations
@@ -62,9 +63,10 @@ info = launch(port=8000, image_dir="/content/images")
 info
 ```
 
-### 3.2 Full SAM2 setup (install + checkpoint download + env update)
+### 3.2 Full SAM2 + Grounding DINO setup (install + checkpoint download + env update)
 
 This downloads a SAM 2.1 checkpoint and writes `.env.colab` automatically.
+By default, it also enables Grounding DINO-based box refinement.
 
 ```python
 # Choose tiny, small, base_plus, or large
@@ -109,6 +111,24 @@ Required for real SAM2 propagation:
 
 If SAM2 is missing or misconfigured, the app still works via the fallback propagator.
 
+### Grounding DINO refinement (optional but recommended)
+
+When enabled, fallback propagation can refine tracked boxes with text-conditioned detections
+from Grounding DINO using each track's label text.
+
+Environment variables:
+
+- `ENABLE_GROUNDING_DINO` (`1`/`0`)
+- `GROUNDING_DINO_MODEL_ID` (default `IDEA-Research/grounding-dino-tiny`)
+- `GROUNDING_DINO_BOX_THRESHOLD`
+- `GROUNDING_DINO_TEXT_THRESHOLD`
+- `GROUNDING_DINO_MIN_IOU`
+- `GROUNDING_DINO_BLEND`
+- `GROUNDING_DINO_SCORE_WEIGHT`
+
+When Grounding DINO refinement is used, propagation backend is reported as
+`sam2_fallback_grounding_dino`.
+
 ### Setup script options
 
 ```bash
@@ -123,6 +143,9 @@ FORCE_REINSTALL=1 bash scripts/setup_sam2_colab.sh tiny
 
 # Skip dependency install and only download/write env
 SKIP_DEP_INSTALL=1 bash scripts/setup_sam2_colab.sh small
+
+# Disable Grounding DINO in setup
+WITH_GROUNDING_DINO=0 bash scripts/setup_sam2_colab.sh tiny
 ```
 
 ---

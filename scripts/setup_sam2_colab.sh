@@ -5,6 +5,7 @@ MODEL_SIZE="${1:-large}"
 DOWNLOAD_ALL="${DOWNLOAD_ALL:-0}"
 FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
 SKIP_DEP_INSTALL="${SKIP_DEP_INSTALL:-0}"
+WITH_GROUNDING_DINO="${WITH_GROUNDING_DINO:-1}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECKPOINT_DIR="${ROOT_DIR}/checkpoints/sam2.1"
@@ -72,6 +73,11 @@ if [[ "$SKIP_DEP_INSTALL" != "1" ]]; then
     python3 -m pip install --upgrade "hydra-core>=1.3.2" "iopath>=0.1.10" "tqdm>=4.66.1"
     python3 -m pip install --upgrade --no-deps "git+https://github.com/facebookresearch/sam2.git"
   fi
+
+  if [[ "$WITH_GROUNDING_DINO" == "1" ]]; then
+    echo "Installing Grounding DINO inference dependencies..."
+    python3 -m pip install --upgrade transformers accelerate
+  fi
 else
   echo "Skipping dependency installation (SKIP_DEP_INSTALL=1)."
 fi
@@ -90,6 +96,13 @@ SELECTED_CFG="${CONFIG_NAMES[$MODEL_SIZE]}"
 cat > "$ENV_FILE" <<EOF
 SAM2_MODEL_CFG=${SELECTED_CFG}
 SAM2_CHECKPOINT=${SELECTED_CKPT}
+ENABLE_GROUNDING_DINO=${WITH_GROUNDING_DINO}
+GROUNDING_DINO_MODEL_ID=IDEA-Research/grounding-dino-tiny
+GROUNDING_DINO_BOX_THRESHOLD=0.30
+GROUNDING_DINO_TEXT_THRESHOLD=0.25
+GROUNDING_DINO_MIN_IOU=0.05
+GROUNDING_DINO_BLEND=0.70
+GROUNDING_DINO_SCORE_WEIGHT=0.20
 EOF
 
 echo
