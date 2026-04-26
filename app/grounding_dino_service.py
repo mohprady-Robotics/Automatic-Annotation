@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-from functools import lru_cache
 from typing import Dict, Iterable, List, Tuple
 
 from PIL import Image
@@ -10,6 +9,10 @@ from PIL import Image
 
 DetectionMap = Dict[str, List[Tuple[List[float], float]]]
 OpenVocabDetections = List[Tuple[str, List[float], float]]
+
+_MODEL_BUNDLE: dict | None = None
+_MODEL_ID: str | None = None
+_LAST_ERROR: str | None = None
 
 
 def _env_enabled(name: str, default: bool = True) -> bool:
@@ -35,30 +38,112 @@ def _default_model_id() -> str:
     return os.getenv("GROUNDING_DINO_MODEL_ID", "IDEA-Research/grounding-dino-tiny").strip()
 
 
-@lru_cache(maxsize=1)
+def _set_last_error(message: str | None) -> None:
+    global _LAST_ERROR
+    _LAST_ERROR = message.strip() if message else None
+
+
+def get_last_grounding_dino_error() -> str:
+    return _LAST_ERROR or "Unknown Grounding DINO error."
+
+
+def _safe_from_pretrained(loader, model_id: str):
+    # Some model versions require trust_remote_code while others reject it.
+    try:
+        return loader.from_pretrained(model_id, trust_remote_code=True)
+    except TypeError:
+        return loader.from_pretrained(model_id)
+
+
 def _load_model_bundle():
+    global _MODEL_BUNDLE, _MODEL_ID
+    model_id = _default_model_id()
+    if _MODEL_BUNDLE is not None and _MODEL_ID == model_id:
+        return _MODEL_BUNDLE
+
     try:
         import torch
         from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
-    except Exception:
+    except Exception as exc:
+        _set_last_error(f"Missing Grounding DINO dependencies: {exc}")
         return None
 
-    model_id = _default_model_id()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     try:
-        processor = AutoProcessor.from_pretrained(model_id)
-        model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
+        processor = _safe_from_pretrained(AutoProcessor, model_id)
+        model = _safe_from_pretrained(AutoModelForZeroShotObjectDetection, model_id)
         model = model.to(device)
         model.eval()
-    except Exception:
+    except Exception as exc:
+        _set_last_error(f"Failed loading model '{model_id}': {exc}")
         return None
 
-    return {
+    bundle = {
         "torch": torch,
         "processor": processor,
         "model": model,
         "device": device,
     }
+    _MODEL_BUNDLE = bundle
+    _MODEL_ID = model_id
+    _set_last_error(None)
+    return bundle
+
+
+def _move_inputs_to_device(inputs, device: str):
+    if hasattr(inputs, "to"):
+        try:
+            return inputs.to(device)
+        except Exception:
+            pass
+    if isinstance(inputs, dict):
+        moved = {}
+        for key, value in inputs.items():
+            if hasattr(value, "to"):
+                moved[key] = value.to(device)
+            else:
+                moved[key] = value
+        return moved
+    return inputs
+
+
+def _post_process_detection(
+    processor,
+    outputs,
+    input_ids,
+    box_threshold: float,
+    text_threshold: float,
+    target_size: tuple[int, int],
+):
+    errors: List[str] = []
+    attempts = [
+        dict(
+            outputs=outputs,
+            input_ids=input_ids,
+            box_threshold=box_threshold,
+            text_threshold=text_threshold,
+            target_sizes=[target_size],
+        ),
+        dict(
+            outputs=outputs,
+            input_ids=input_ids,
+            threshold=box_threshold,
+            target_sizes=[target_size],
+        ),
+    ]
+    for kwargs in attempts:
+        try:
+            return processor.post_process_grounded_object_detection(**kwargs)[0]
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if hasattr(processor, "post_process_object_detection"):
+        try:
+            return processor.post_process_object_detection(outputs, threshold=box_threshold, target_sizes=[target_size])[0]
+        except Exception as exc:
+            errors.append(str(exc))
+
+    raise RuntimeError(" ; ".join(errors))
 
 
 def grounding_dino_status() -> tuple[bool, str]:
@@ -69,7 +154,7 @@ def grounding_dino_status() -> tuple[bool, str]:
             False,
             (
                 f"Unable to load Grounding DINO model '{_default_model_id()}'. "
-                "Install dependencies and ensure model download is available."
+                f"Install dependencies and ensure model download is available. Details: {get_last_grounding_dino_error()}"
             ),
         )
     return True, "ok"
@@ -112,17 +197,21 @@ def detect_boxes_for_labels(frame_path: str, labels: Iterable[str]) -> Detection
     try:
         with Image.open(frame_path) as image:
             rgb_image = image.convert("RGB")
-            inputs = processor(images=rgb_image, text=query, return_tensors="pt").to(device)
+            inputs = processor(images=rgb_image, text=query, return_tensors="pt")
+            inputs = _move_inputs_to_device(inputs, device)
             with torch.inference_mode():
                 outputs = model(**inputs)
-            result = processor.post_process_grounded_object_detection(
-                outputs,
-                inputs.input_ids,
+            input_ids = inputs["input_ids"] if isinstance(inputs, dict) else inputs.input_ids
+            result = _post_process_detection(
+                processor=processor,
+                outputs=outputs,
+                input_ids=input_ids,
                 box_threshold=box_threshold,
                 text_threshold=text_threshold,
-                target_sizes=[rgb_image.size[::-1]],  # (height, width)
-            )[0]
-    except Exception:
+                target_size=rgb_image.size[::-1],  # (height, width)
+            )
+    except Exception as exc:
+        _set_last_error(f"Label detection failed: {exc}")
         return None
 
     detections: DetectionMap = {label: [] for label in normalized_labels}
@@ -182,17 +271,21 @@ def detect_boxes_for_text_prompt(
     try:
         with Image.open(frame_path) as image:
             rgb_image = image.convert("RGB")
-            inputs = processor(images=rgb_image, text=prompt, return_tensors="pt").to(device)
+            inputs = processor(images=rgb_image, text=prompt, return_tensors="pt")
+            inputs = _move_inputs_to_device(inputs, device)
             with torch.inference_mode():
                 outputs = model(**inputs)
-            result = processor.post_process_grounded_object_detection(
-                outputs,
-                inputs.input_ids,
+            input_ids = inputs["input_ids"] if isinstance(inputs, dict) else inputs.input_ids
+            result = _post_process_detection(
+                processor=processor,
+                outputs=outputs,
+                input_ids=input_ids,
                 box_threshold=float(resolved_box_threshold),
                 text_threshold=float(resolved_text_threshold),
-                target_sizes=[rgb_image.size[::-1]],  # (height, width)
-            )[0]
-    except Exception:
+                target_size=rgb_image.size[::-1],  # (height, width)
+            )
+    except Exception as exc:
+        _set_last_error(f"Prompt detection failed: {exc}")
         return None
 
     detections: OpenVocabDetections = []

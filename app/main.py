@@ -26,7 +26,11 @@ from app.models import (
     PropagateResponse,
     SessionCreateResponse,
 )
-from app.grounding_dino_service import detect_boxes_for_text_prompt, grounding_dino_status
+from app.grounding_dino_service import (
+    detect_boxes_for_text_prompt,
+    get_last_grounding_dino_error,
+    grounding_dino_status,
+)
 from app.sam2_service import propagate_annotations
 
 
@@ -188,7 +192,7 @@ def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectRespons
             status_code=400,
             detail=(
                 "Grounding DINO detection failed at runtime. "
-                "Check model downloads, thresholds, and prompt."
+                f"Details: {get_last_grounding_dino_error()}"
             ),
         )
 
