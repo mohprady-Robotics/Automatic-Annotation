@@ -12,6 +12,7 @@ from PIL import Image
 
 from app.grounding_dino_service import detect_boxes_for_labels
 from app.models import Annotation
+from app.sam_mask_service import segment_box_to_polygon
 
 
 @dataclass
@@ -142,6 +143,9 @@ def _refine_with_grounding_dino(
         x2 = state.bbox[2] * (1.0 - blend) + best_box[2] * blend
         y2 = state.bbox[3] * (1.0 - blend) + best_box[3] * blend
         state.bbox = _clamp_bbox([x1, y1, x2, y2], width, height)
+        polygon = segment_box_to_polygon(frame_path=frame_path, bbox_xyxy=state.bbox)
+        state.polygon = polygon if polygon and len(polygon) >= 3 else None
+        state.shape_type = "polygon" if state.polygon else "bbox"
         used_detection_idx[label_key].add(best_idx)
         any_refined = True
 
@@ -211,18 +215,31 @@ def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annota
         if frame_refined:
             grounding_used = True
         for state in states_fwd:
-            frame_annotations.append(
-                Annotation(
-                    id=f"{state.track_id}_{frame_index}",
-                    track_id=state.track_id,
-                    label=state.label,
-                    frame_index=frame_index,
-                    shape_type="bbox",
-                    source="sam2_fallback_grounding_dino" if frame_refined else "sam2_fallback",
-                    bbox=state.bbox,
-                    polygon=None,
+            annotation_kwargs = {
+                "id": f"{state.track_id}_{frame_index}",
+                "track_id": state.track_id,
+                "label": state.label,
+                "frame_index": frame_index,
+                "source": "sam2_fallback_grounding_dino" if frame_refined else "sam2_fallback",
+            }
+            if state.polygon and len(state.polygon) >= 3:
+                frame_annotations.append(
+                    Annotation(
+                        **annotation_kwargs,
+                        shape_type="polygon",
+                        polygon=state.polygon,
+                        bbox=None,
+                    )
                 )
-            )
+            else:
+                frame_annotations.append(
+                    Annotation(
+                        **annotation_kwargs,
+                        shape_type="bbox",
+                        bbox=state.bbox,
+                        polygon=None,
+                    )
+                )
         result[frame_index] = frame_annotations
         prev_gray = curr_gray
 
@@ -255,18 +272,31 @@ def _propagate_fallback(frame_paths: List[str], key_frame_index: int, key_annota
         if frame_refined:
             grounding_used = True
         for state in states_bwd:
-            frame_annotations.append(
-                Annotation(
-                    id=f"{state.track_id}_{frame_index}",
-                    track_id=state.track_id,
-                    label=state.label,
-                    frame_index=frame_index,
-                    shape_type="bbox",
-                    source="sam2_fallback_grounding_dino" if frame_refined else "sam2_fallback",
-                    bbox=state.bbox,
-                    polygon=None,
+            annotation_kwargs = {
+                "id": f"{state.track_id}_{frame_index}",
+                "track_id": state.track_id,
+                "label": state.label,
+                "frame_index": frame_index,
+                "source": "sam2_fallback_grounding_dino" if frame_refined else "sam2_fallback",
+            }
+            if state.polygon and len(state.polygon) >= 3:
+                frame_annotations.append(
+                    Annotation(
+                        **annotation_kwargs,
+                        shape_type="polygon",
+                        polygon=state.polygon,
+                        bbox=None,
+                    )
                 )
-            )
+            else:
+                frame_annotations.append(
+                    Annotation(
+                        **annotation_kwargs,
+                        shape_type="bbox",
+                        bbox=state.bbox,
+                        polygon=None,
+                    )
+                )
         result[frame_index] = frame_annotations
         prev_gray = curr_gray
 
@@ -456,18 +486,33 @@ def _propagate_with_sam2(
         for track_id, track in tracks.items():
             bbox = dense_tracks[track_id][frame_idx]
             assert bbox is not None
-            frame_annotations.append(
-                Annotation(
-                    id=f"{track_id}_{frame_idx}",
-                    track_id=track_id,
-                    label=track["label"],
-                    frame_index=frame_idx,
-                    shape_type="bbox",
-                    source="sam2",
-                    bbox=bbox,
-                    polygon=None,
+            sam_polygon = segment_box_to_polygon(frame_path=frame_paths[frame_idx], bbox_xyxy=bbox)
+            if sam_polygon and len(sam_polygon) >= 3:
+                frame_annotations.append(
+                    Annotation(
+                        id=f"{track_id}_{frame_idx}",
+                        track_id=track_id,
+                        label=track["label"],
+                        frame_index=frame_idx,
+                        shape_type="polygon",
+                        source="sam2",
+                        bbox=None,
+                        polygon=sam_polygon,
+                    )
                 )
-            )
+            else:
+                frame_annotations.append(
+                    Annotation(
+                        id=f"{track_id}_{frame_idx}",
+                        track_id=track_id,
+                        label=track["label"],
+                        frame_index=frame_idx,
+                        shape_type="bbox",
+                        source="sam2",
+                        bbox=bbox,
+                        polygon=None,
+                    )
+                )
         result[frame_idx] = frame_annotations
 
     return result

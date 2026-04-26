@@ -63,6 +63,18 @@ input[type="text"] {
   margin-bottom: 8px;
 }
 
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 button {
   border: 1px solid #2563eb;
   background: #3b82f6;

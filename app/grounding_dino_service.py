@@ -5,10 +5,11 @@ import re
 from typing import Dict, Iterable, List, Tuple
 
 from PIL import Image
+from app.sam_mask_service import segment_box_to_polygon
 
 
 DetectionMap = Dict[str, List[Tuple[List[float], float]]]
-OpenVocabDetections = List[Tuple[str, List[float], float]]
+OpenVocabDetections = List[Tuple[str, List[float], float, List[List[float]] | None]]
 
 _MODEL_BUNDLE: dict | None = None
 _MODEL_ID: str | None = None
@@ -244,10 +245,11 @@ def detect_boxes_for_text_prompt(
     box_threshold: float | None = None,
     text_threshold: float | None = None,
     top_k: int = 20,
+    use_sam_masks: bool = True,
 ) -> OpenVocabDetections | None:
     """
     Open-vocabulary detections for an arbitrary text prompt.
-    Returns [(det_label, bbox_xyxy, score), ...] sorted by score descending.
+    Returns [(det_label, bbox_xyxy, score, polygon_or_none), ...] sorted by score descending.
     """
     is_ready, _reason = grounding_dino_status()
     if not is_ready:
@@ -304,7 +306,14 @@ def detect_boxes_for_text_prompt(
         else:
             box_values = [float(value) for value in box]
 
-        detections.append((str(det_label).strip().lower(), box_values, score_value))
+        det_label_norm = str(det_label).strip().lower()
+        if use_sam_masks:
+            polygon = segment_box_to_polygon(frame_path=frame_path, bbox_xyxy=box_values)
+            if polygon and len(polygon) >= 3:
+                xs = [p[0] for p in polygon]
+                ys = [p[1] for p in polygon]
+                box_values = [float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))]
+        detections.append((det_label_norm, box_values, score_value, polygon if use_sam_masks else None))
 
     detections.sort(key=lambda item: item[2], reverse=True)
     return detections[:top_k]

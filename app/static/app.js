@@ -41,6 +41,7 @@ const annotationList = document.getElementById("annotationList");
 const openVocabPromptInput = document.getElementById("openVocabPromptInput");
 const openVocabBoxThresholdInput = document.getElementById("openVocabBoxThresholdInput");
 const openVocabTextThresholdInput = document.getElementById("openVocabTextThresholdInput");
+const openVocabUseSamMasksInput = document.getElementById("openVocabUseSamMasksInput");
 const detectOpenVocabBtn = document.getElementById("detectOpenVocabBtn");
 const addSelectedDetectionsBtn = document.getElementById("addSelectedDetectionsBtn");
 const openVocabDetections = document.getElementById("openVocabDetections");
@@ -172,17 +173,30 @@ function render() {
 
   for (const detection of currentFrameOpenVocabDetections()) {
     const isSelected = currentFrameSelectedDetectionIds().includes(detection.id);
-    const [x1, y1, x2, y2] = detection.bbox;
-    ctx.lineWidth = isSelected ? 3 : 2;
-    ctx.strokeStyle = isSelected ? "#16a34a" : "#f59e0b";
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-    ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-    ctx.fillRect(x1, Math.max(0, y1 - 18), 180, 18);
-    ctx.fillStyle = "#111827";
-    ctx.font = "12px Arial";
-    ctx.fillText(`det:${detection.label} (${detection.score.toFixed(2)})`, x1 + 4, Math.max(12, y1 - 5));
+    if (detection.polygon && detection.polygon.length >= 3) {
+      ctx.lineWidth = isSelected ? 3 : 2;
+      ctx.strokeStyle = isSelected ? "#16a34a" : "#f59e0b";
+      drawPolygon(detection.polygon, ctx.strokeStyle, ctx.lineWidth, 0.12);
+      const x0 = detection.polygon[0][0];
+      const y0 = detection.polygon[0][1];
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.fillRect(x0, Math.max(0, y0 - 18), 200, 18);
+      ctx.fillStyle = "#111827";
+      ctx.font = "12px Arial";
+      ctx.fillText(`det:${detection.label} (${detection.score.toFixed(2)})`, x0 + 4, Math.max(12, y0 - 5));
+    } else {
+      const [x1, y1, x2, y2] = detection.bbox;
+      ctx.lineWidth = isSelected ? 3 : 2;
+      ctx.strokeStyle = isSelected ? "#16a34a" : "#f59e0b";
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.fillRect(x1, Math.max(0, y1 - 18), 200, 18);
+      ctx.fillStyle = "#111827";
+      ctx.font = "12px Arial";
+      ctx.fillText(`det:${detection.label} (${detection.score.toFixed(2)})`, x1 + 4, Math.max(12, y1 - 5));
+    }
   }
 
   for (const annotation of currentFrameAnnotations()) {
@@ -270,9 +284,12 @@ function refreshOpenVocabDetectionsList() {
     const meta = document.createElement("div");
     meta.className = "meta";
     const [x1, y1, x2, y2] = detection.bbox;
+    const geometryText = detection.polygon && detection.polygon.length >= 3
+      ? `polygon_points=${detection.polygon.length}`
+      : `bbox=[${x1.toFixed(1)}, ${y1.toFixed(1)}, ${x2.toFixed(1)}, ${y2.toFixed(1)}]`;
     meta.innerHTML = `<strong>${detection.label}</strong>
       <span>score=${detection.score.toFixed(3)}</span>
-      <span>bbox=[${x1.toFixed(1)}, ${y1.toFixed(1)}, ${x2.toFixed(1)}, ${y2.toFixed(1)}]</span>`;
+      <span>${geometryText}</span>`;
 
     row.appendChild(checkbox);
     row.appendChild(meta);
@@ -571,6 +588,7 @@ detectOpenVocabBtn.addEventListener("click", async () => {
         box_threshold: boxThreshold,
         text_threshold: textThreshold,
         top_k: 30,
+        use_sam_masks: Boolean(openVocabUseSamMasksInput.checked),
       }),
     });
     const payload = await response.json();
@@ -584,6 +602,7 @@ detectOpenVocabBtn.addEventListener("click", async () => {
       label: det.label,
       score: Number(det.score),
       bbox: det.bbox,
+      polygon: det.polygon || null,
     }));
     state.openVocabSelectedDetectionIds[key] = state.openVocabDetectionsByFrame[key].map((det) => det.id);
     refreshOpenVocabDetectionsList();
@@ -610,16 +629,28 @@ addSelectedDetectionsBtn.addEventListener("click", () => {
   for (const detection of chosen) {
     const trackId = state.nextTrackId;
     state.nextTrackId += 1;
-    currentFrameAnnotations().push({
+    const annotationBase = {
       id: generateAnnotationId(trackId, state.currentFrame),
       track_id: trackId,
       label: detection.label || openVocabPromptInput.value.trim() || "detected_object",
       frame_index: state.currentFrame,
-      shape_type: "bbox",
       source: "manual",
-      bbox: detection.bbox,
-      polygon: null,
-    });
+    };
+    if (detection.polygon && detection.polygon.length >= 3) {
+      currentFrameAnnotations().push({
+        ...annotationBase,
+        shape_type: "polygon",
+        bbox: null,
+        polygon: detection.polygon,
+      });
+    } else {
+      currentFrameAnnotations().push({
+        ...annotationBase,
+        shape_type: "bbox",
+        bbox: detection.bbox,
+        polygon: null,
+      });
+    }
   }
 
   refreshAnnotationList();

@@ -9,6 +9,7 @@ This project provides a local webapp for batch image annotation with:
 - A **Propagate** action that applies SAM2-style propagation to all frames in the batch
   - Uses real SAM2 when configured
   - Uses Grounding DINO-guided fallback tracking when SAM2 is not available
+  - Refines boxes to segmentation polygons with SAM masks when available
   - Grounding DINO is mandatory for propagation and open-vocabulary detection
 - Manual cleanup after propagation (delete/add annotations)
 - JSON export containing:
@@ -46,10 +47,11 @@ In the UI:
 1. Enter an image directory path available to the backend (example: `/content/images` on Colab).
 2. Click **Load Session**.
 3. Draw manual labels on a key frame.
-4. Use **Open-vocabulary detect (Grounding DINO)**:
+4. Use **Open-vocabulary detect (Grounding DINO + SAM)**:
    - enter a text prompt (for example: `person . bicycle . dog`)
    - run detection on current frame
-   - select suggested boxes and add them as manual annotations
+   - optionally enable SAM mask generation to get polygon masks
+   - select suggested detections and add them as manual annotations
 5. Click **Propagate with SAM2**.
 6. Review each frame and manually add/delete as needed.
 7. Click **Export JSON** and download the final output.
@@ -112,6 +114,10 @@ Grounding DINO is required by the backend for:
 - fallback propagation (box refinement/tracking guidance)
 - open-vocabulary text prompt detections in the GUI
 
+SAM mask extraction is used for higher-accuracy segmentation polygons:
+- open-vocabulary detections can include polygons (`use_sam_masks=true`)
+- propagation can emit polygon annotations when SAM masks are available
+
 If Grounding DINO is unavailable, `/api/propagate` and `/api/open_vocab/detect` return an error.
 
 The GUI also supports **open-vocabulary prompt detections** through Grounding DINO:
@@ -128,6 +134,8 @@ Environment variables:
 - `GROUNDING_DINO_MIN_IOU`
 - `GROUNDING_DINO_BLEND`
 - `GROUNDING_DINO_SCORE_WEIGHT`
+- `ENABLE_SAM_MASKS` (`1` to enable SAM polygon extraction)
+- `SAM_MODEL_ID` (default `facebook/sam-vit-base`)
 
 When Grounding DINO refinement is used, propagation backend is reported as
 `sam2_fallback_grounding_dino`.

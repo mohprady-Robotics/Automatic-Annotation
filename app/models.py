@@ -71,12 +71,14 @@ class OpenVocabDetectRequest(BaseModel):
     box_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     text_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     top_k: int = Field(default=20, ge=1, le=200)
+    use_sam_masks: bool = True
 
 
 class OpenVocabDetection(BaseModel):
     label: str = Field(min_length=1)
     score: float = Field(ge=0.0, le=1.0)
     bbox: List[float] = Field(min_length=4, max_length=4)
+    polygon: Optional[List[List[float]]] = None
 
 
 class OpenVocabDetectResponse(BaseModel):

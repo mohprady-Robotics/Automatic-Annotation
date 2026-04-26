@@ -73,8 +73,8 @@ if [[ "$SKIP_DEP_INSTALL" != "1" ]]; then
     python3 -m pip install --upgrade --no-deps "git+https://github.com/facebookresearch/sam2.git"
   fi
 
-  echo "Installing Grounding DINO inference dependencies..."
-  python3 -m pip install --upgrade transformers accelerate
+  echo "Installing Grounding DINO + SAM mask dependencies..."
+  python3 -m pip install --upgrade transformers accelerate timm opencv-python
 else
   echo "Skipping dependency installation (SKIP_DEP_INSTALL=1)."
 fi
@@ -100,6 +100,8 @@ GROUNDING_DINO_TEXT_THRESHOLD=0.25
 GROUNDING_DINO_MIN_IOU=0.05
 GROUNDING_DINO_BLEND=0.70
 GROUNDING_DINO_SCORE_WEIGHT=0.20
+ENABLE_SAM_MASKS=1
+SAM_MODEL_ID=facebook/sam-vit-base
 EOF
 
 echo

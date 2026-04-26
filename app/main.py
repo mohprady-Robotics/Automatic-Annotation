@@ -31,6 +31,7 @@ from app.grounding_dino_service import (
     get_last_grounding_dino_error,
     grounding_dino_status,
 )
+from app.sam_mask_service import segment_box_to_polygon
 from app.sam2_service import propagate_annotations
 
 
@@ -186,6 +187,7 @@ def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectRespons
         box_threshold=request.box_threshold,
         text_threshold=request.text_threshold,
         top_k=request.top_k,
+        use_sam_masks=request.use_sam_masks,
     )
     if detections is None:
         raise HTTPException(
@@ -197,14 +199,28 @@ def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectRespons
         )
 
     normalized: List[OpenVocabDetection] = []
-    for det_label, bbox, score in detections:
+    for det_label, bbox, score, polygon in detections:
         x1, y1, x2, y2 = bbox
         x1 = max(0.0, min(x1, session.width - 1))
         y1 = max(0.0, min(y1, session.height - 1))
         x2 = max(x1 + 1.0, min(x2, session.width))
         y2 = max(y1 + 1.0, min(y2, session.height))
+        normalized_polygon = None
+        if polygon and len(polygon) >= 3:
+            normalized_polygon = [
+                [
+                    max(0.0, min(float(point[0]), session.width - 1)),
+                    max(0.0, min(float(point[1]), session.height - 1)),
+                ]
+                for point in polygon
+            ]
         normalized.append(
-            OpenVocabDetection(label=det_label, score=float(score), bbox=[x1, y1, x2, y2])
+            OpenVocabDetection(
+                label=det_label,
+                score=float(score),
+                bbox=[x1, y1, x2, y2],
+                polygon=normalized_polygon,
+            )
         )
 
     return OpenVocabDetectResponse(

@@ -51,6 +51,10 @@
           <h2>2b) Open-vocabulary detect (Grounding DINO)</h2>
           <label for="openVocabPromptInput">Text prompt</label>
           <input id="openVocabPromptInput" type="text" placeholder="person . bicycle . dog" />
+          <label class="checkbox-label">
+            <input id="openVocabUseSamMasksInput" type="checkbox" checked />
+            Use SAM to generate segmentation masks
+          </label>
           <div class="tool-row">
             <label for="openVocabBoxThresholdInput">Box threshold</label>
             <input id="openVocabBoxThresholdInput" type="text" value="0.30" />
