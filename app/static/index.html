@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAM2 Annotation Webapp</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>SAM2 Annotation Webapp</h1>
+      <p>
+        Draw manual boxes/polygons with labels on one frame, propagate to all frames, refine, and export JSON.
+      </p>
+    </header>
+
+    <main class="layout">
+      <section class="controls">
+        <div class="panel">
+          <h2>1) Load Images</h2>
+          <label for="imageDirInput">Image directory path (on server):</label>
+          <input
+            id="imageDirInput"
+            type="text"
+            placeholder="/content/images or /workspace/data/images"
+          />
+          <button id="loadSessionBtn">Load Session</button>
+          <p id="sessionMeta"></p>
+        </div>
+
+        <div class="panel">
+          <h2>2) Annotate</h2>
+          <label for="labelInput">Label</label>
+          <input id="labelInput" type="text" placeholder="car" />
+          <div class="tool-row">
+            <button id="rectToolBtn" class="tool-btn active">Rectangle</button>
+            <button id="polygonToolBtn" class="tool-btn">Polygon</button>
+            <button id="selectToolBtn" class="tool-btn">Select</button>
+          </div>
+          <div class="tool-row">
+            <button id="finishPolygonBtn">Finish Polygon</button>
+            <button id="clearFrameBtn">Clear Frame</button>
+          </div>
+          <p class="hint">
+            Rectangle: drag on image. Polygon: click points, then "Finish Polygon". Select mode + click object to
+            inspect/delete.
+          </p>
+        </div>
+
+        <div class="panel">
+          <h2>2b) Open-vocabulary detect (Grounding DINO)</h2>
+          <label for="openVocabPromptInput">Text prompt</label>
+          <input id="openVocabPromptInput" type="text" placeholder="person . bicycle . dog" />
+          <label class="checkbox-label">
+            <input id="openVocabUseSamMasksInput" type="checkbox" checked />
+            Use SAM to generate segmentation masks
+          </label>
+          <div class="tool-row">
+            <label for="openVocabBoxThresholdInput">Box threshold</label>
+            <input id="openVocabBoxThresholdInput" type="text" value="0.30" />
+          </div>
+          <div class="tool-row">
+            <label for="openVocabTextThresholdInput">Text threshold</label>
+            <input id="openVocabTextThresholdInput" type="text" value="0.25" />
+          </div>
+          <div class="tool-row">
+            <button id="detectOpenVocabBtn">Detect Prompt on Frame</button>
+            <button id="addSelectedDetectionsBtn">Add Selected Detections</button>
+          </div>
+          <p class="hint">
+            Runs text prompt detection on current frame. Select suggested boxes and add them as manual annotations.
+          </p>
+          <div id="openVocabDetections"></div>
+        </div>
+
+        <div class="panel">
+          <h2>2c) Interactive SAM refinement (clicks)</h2>
+          <label class="checkbox-label">
+            <input id="samRefineModeInput" type="checkbox" />
+            Enable SAM click mode on canvas
+          </label>
+          <div class="tool-row">
+            <button id="samPositiveModeBtn" class="tool-btn active">Positive Clicks</button>
+            <button id="samNegativeModeBtn" class="tool-btn">Negative Clicks</button>
+          </div>
+          <div class="tool-row">
+            <button id="runSamRefineBtn">Run SAM Refinement</button>
+            <button id="clearSamClicksBtn">Clear SAM Clicks</button>
+            <button id="addSamMaskBtn">Add SAM Mask as Annotation</button>
+          </div>
+          <p class="hint">
+            Click positives on target and negatives on background. Run refinement, inspect preview mask, then add.
+          </p>
+          <div id="samClicksInfo">SAM clicks: 0 positive, 0 negative</div>
+        </div>
+
+        <div class="panel">
+          <h2>3) Propagate + Export</h2>
+          <button id="propagateBtn">Propagate with SAM2</button>
+          <button id="exportBtn">Export JSON</button>
+          <p id="statusText">Status: idle</p>
+          <a id="downloadLink" href="#" target="_blank" hidden>Download exported JSON</a>
+        </div>
+
+        <div class="panel">
+          <h2>Selected Annotation</h2>
+          <p id="selectedInfo">None selected.</p>
+          <button id="deleteSelectedBtn">Delete Selected</button>
+        </div>
+
+        <div class="panel annotations-list">
+          <h2>Current Frame Annotations</h2>
+          <div id="annotationList"></div>
+        </div>
+      </section>
+
+      <section class="viewer">
+        <div class="frame-controls">
+          <button id="prevFrameBtn">Prev</button>
+          <span id="frameCounter">Frame 0 / 0</span>
+          <button id="nextFrameBtn">Next</button>
+        </div>
+        <div class="canvas-container">
+          <canvas id="canvas"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
