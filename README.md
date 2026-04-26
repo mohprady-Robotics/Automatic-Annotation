@@ -46,9 +46,13 @@ In the UI:
 1. Enter an image directory path available to the backend (example: `/content/images` on Colab).
 2. Click **Load Session**.
 3. Draw manual labels on a key frame.
-4. Click **Propagate with SAM2**.
-5. Review each frame and manually add/delete as needed.
-6. Click **Export JSON** and download the final output.
+4. (Optional) Use **Open-vocabulary detect (Grounding DINO)**:
+   - enter a text prompt (for example: `person . bicycle . dog`)
+   - run detection on current frame
+   - select suggested boxes and add them as manual annotations
+5. Click **Propagate with SAM2**.
+6. Review each frame and manually add/delete as needed.
+7. Click **Export JSON** and download the final output.
 
 ---
 
@@ -115,6 +119,11 @@ If SAM2 is missing or misconfigured, the app still works via the fallback propag
 
 When enabled, fallback propagation can refine tracked boxes with text-conditioned detections
 from Grounding DINO using each track's label text.
+
+The GUI also supports **open-vocabulary prompt detections** through Grounding DINO:
+- panel: `2b) Open-vocabulary detect (Grounding DINO)`
+- endpoint: `POST /api/open_vocab/detect`
+- detections can be selected and converted into manual annotations before propagation.
 
 Environment variables:
 

@@ -19,10 +19,14 @@ from app.models import (
     Annotation,
     ExportRequest,
     ExportResponse,
+    OpenVocabDetectRequest,
+    OpenVocabDetectResponse,
+    OpenVocabDetection,
     PropagateRequest,
     PropagateResponse,
     SessionCreateResponse,
 )
+from app.grounding_dino_service import detect_boxes_for_text_prompt
 from app.sam2_service import propagate_annotations
 
 
@@ -147,6 +151,49 @@ def propagate(request: PropagateRequest) -> PropagateResponse:
     )
     frames = {str(frame_index): annotations for frame_index, annotations in result.items()}
     return PropagateResponse(session_id=request.session_id, backend=backend, frames=frames)
+
+
+@app.post("/api/open_vocab/detect", response_model=OpenVocabDetectResponse)
+def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectResponse:
+    session = SESSIONS.get(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Unknown session: {request.session_id}")
+    if request.frame_index < 0 or request.frame_index >= len(session.frame_paths):
+        raise HTTPException(status_code=400, detail=f"Invalid frame index {request.frame_index}.")
+
+    frame_path = session.frame_paths[request.frame_index]
+    detections = detect_boxes_for_text_prompt(
+        frame_path=str(frame_path),
+        text_prompt=request.text_prompt,
+        box_threshold=request.box_threshold,
+        text_threshold=request.text_threshold,
+        top_k=request.top_k,
+    )
+    if detections is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Grounding DINO detection unavailable. Ensure ENABLE_GROUNDING_DINO=1 and "
+                "Grounding DINO dependencies/model are installed."
+            ),
+        )
+
+    normalized: List[OpenVocabDetection] = []
+    for det_label, bbox, score in detections:
+        x1, y1, x2, y2 = bbox
+        x1 = max(0.0, min(x1, session.width - 1))
+        y1 = max(0.0, min(y1, session.height - 1))
+        x2 = max(x1 + 1.0, min(x2, session.width))
+        y2 = max(y1 + 1.0, min(y2, session.height))
+        normalized.append(
+            OpenVocabDetection(label=det_label, score=float(score), bbox=[x1, y1, x2, y2])
+        )
+
+    return OpenVocabDetectResponse(
+        session_id=request.session_id,
+        frame_index=request.frame_index,
+        detections=normalized,
+    )
 
 
 @app.post("/api/export", response_model=ExportResponse)

@@ -12,6 +12,8 @@ const state = {
   selectedAnnotationId: null,
   nextTrackId: 1,
   annotationsByFrame: {},
+  openVocabDetectionsByFrame: {},
+  openVocabSelectedDetectionIds: {},
 };
 
 const canvas = document.getElementById("canvas");
@@ -36,6 +38,12 @@ const frameCounter = document.getElementById("frameCounter");
 const selectedInfo = document.getElementById("selectedInfo");
 const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
 const annotationList = document.getElementById("annotationList");
+const openVocabPromptInput = document.getElementById("openVocabPromptInput");
+const openVocabBoxThresholdInput = document.getElementById("openVocabBoxThresholdInput");
+const openVocabTextThresholdInput = document.getElementById("openVocabTextThresholdInput");
+const detectOpenVocabBtn = document.getElementById("detectOpenVocabBtn");
+const addSelectedDetectionsBtn = document.getElementById("addSelectedDetectionsBtn");
+const openVocabDetections = document.getElementById("openVocabDetections");
 
 function setStatus(text) {
   statusText.textContent = `Status: ${text}`;
@@ -59,6 +67,19 @@ function currentFrameAnnotations() {
 
 function generateAnnotationId(trackId, frameIndex) {
   return `${trackId}_${frameIndex}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function currentFrameOpenVocabDetections() {
+  const key = String(state.currentFrame);
+  return state.openVocabDetectionsByFrame[key] || [];
+}
+
+function currentFrameSelectedDetectionIds() {
+  const key = String(state.currentFrame);
+  if (!state.openVocabSelectedDetectionIds[key]) {
+    state.openVocabSelectedDetectionIds[key] = [];
+  }
+  return state.openVocabSelectedDetectionIds[key];
 }
 
 function getPointerPosition(evt) {
@@ -149,6 +170,21 @@ function render() {
   if (!state.imageElement) return;
   ctx.drawImage(state.imageElement, 0, 0, state.imageWidth, state.imageHeight);
 
+  for (const detection of currentFrameOpenVocabDetections()) {
+    const isSelected = currentFrameSelectedDetectionIds().includes(detection.id);
+    const [x1, y1, x2, y2] = detection.bbox;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.strokeStyle = isSelected ? "#16a34a" : "#f59e0b";
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.fillRect(x1, Math.max(0, y1 - 18), 180, 18);
+    ctx.fillStyle = "#111827";
+    ctx.font = "12px Arial";
+    ctx.fillText(`det:${detection.label} (${detection.score.toFixed(2)})`, x1 + 4, Math.max(12, y1 - 5));
+  }
+
   for (const annotation of currentFrameAnnotations()) {
     const isSelected = annotation.id === state.selectedAnnotationId;
     const baseColor = hslToRgbString(colorForTrack(annotation.track_id));
@@ -202,6 +238,46 @@ function render() {
       ctx.fill();
     }
   }
+}
+
+function refreshOpenVocabDetectionsList() {
+  const detections = currentFrameOpenVocabDetections();
+  const selectedIds = currentFrameSelectedDetectionIds();
+  openVocabDetections.innerHTML = "";
+  if (detections.length === 0) {
+    openVocabDetections.innerHTML = "<p>No detections on this frame.</p>";
+    return;
+  }
+
+  detections.forEach((detection) => {
+    const row = document.createElement("div");
+    row.className = "detection-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = selectedIds.includes(detection.id);
+    checkbox.addEventListener("change", () => {
+      const next = new Set(currentFrameSelectedDetectionIds());
+      if (checkbox.checked) {
+        next.add(detection.id);
+      } else {
+        next.delete(detection.id);
+      }
+      state.openVocabSelectedDetectionIds[String(state.currentFrame)] = [...next];
+      render();
+    });
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const [x1, y1, x2, y2] = detection.bbox;
+    meta.innerHTML = `<strong>${detection.label}</strong>
+      <span>score=${detection.score.toFixed(3)}</span>
+      <span>bbox=[${x1.toFixed(1)}, ${y1.toFixed(1)}, ${x2.toFixed(1)}, ${y2.toFixed(1)}]</span>`;
+
+    row.appendChild(checkbox);
+    row.appendChild(meta);
+    openVocabDetections.appendChild(row);
+  });
 }
 
 function refreshAnnotationList() {
@@ -288,6 +364,7 @@ async function loadFrame(frameIndex) {
   state.draftRect = null;
   updateSelectedInfo();
   refreshAnnotationList();
+  refreshOpenVocabDetectionsList();
   render();
 }
 
@@ -453,6 +530,8 @@ loadSessionBtn.addEventListener("click", async () => {
     state.currentFrame = 0;
     state.nextTrackId = 1;
     state.annotationsByFrame = {};
+    state.openVocabDetectionsByFrame = {};
+    state.openVocabSelectedDetectionIds = {};
     sessionMeta.textContent = `session=${payload.session_id} | frames=${payload.frame_count} | size=${payload.width}x${payload.height}`;
     await loadFrame(0);
     setStatus("session loaded");
@@ -460,6 +539,92 @@ loadSessionBtn.addEventListener("click", async () => {
   } catch (error) {
     setStatus(error.message);
   }
+});
+
+detectOpenVocabBtn.addEventListener("click", async () => {
+  if (!state.sessionId) {
+    setStatus("load a session first");
+    return;
+  }
+  const prompt = openVocabPromptInput.value.trim();
+  if (!prompt) {
+    setStatus("enter a text prompt first");
+    return;
+  }
+
+  const boxThreshold = Number(openVocabBoxThresholdInput.value);
+  const textThreshold = Number(openVocabTextThresholdInput.value);
+  if (Number.isNaN(boxThreshold) || Number.isNaN(textThreshold)) {
+    setStatus("threshold values must be numbers");
+    return;
+  }
+
+  try {
+    setStatus("running open-vocab detection...");
+    const response = await fetch("/api/open_vocab/detect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        frame_index: state.currentFrame,
+        text_prompt: prompt,
+        box_threshold: boxThreshold,
+        text_threshold: textThreshold,
+        top_k: 30,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.detail || "Open-vocab detection failed.");
+    }
+
+    const key = String(state.currentFrame);
+    state.openVocabDetectionsByFrame[key] = payload.detections.map((det, index) => ({
+      id: `det_${state.currentFrame}_${index}`,
+      label: det.label,
+      score: Number(det.score),
+      bbox: det.bbox,
+    }));
+    state.openVocabSelectedDetectionIds[key] = state.openVocabDetectionsByFrame[key].map((det) => det.id);
+    refreshOpenVocabDetectionsList();
+    render();
+    setStatus(`detected ${payload.detections.length} open-vocab boxes`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+addSelectedDetectionsBtn.addEventListener("click", () => {
+  if (!state.sessionId) {
+    setStatus("load a session first");
+    return;
+  }
+  const detections = currentFrameOpenVocabDetections();
+  const selected = new Set(currentFrameSelectedDetectionIds());
+  const chosen = detections.filter((det) => selected.has(det.id));
+  if (chosen.length === 0) {
+    setStatus("select at least one detection");
+    return;
+  }
+
+  for (const detection of chosen) {
+    const trackId = state.nextTrackId;
+    state.nextTrackId += 1;
+    currentFrameAnnotations().push({
+      id: generateAnnotationId(trackId, state.currentFrame),
+      track_id: trackId,
+      label: detection.label || openVocabPromptInput.value.trim() || "detected_object",
+      frame_index: state.currentFrame,
+      shape_type: "bbox",
+      source: "manual",
+      bbox: detection.bbox,
+      polygon: null,
+    });
+  }
+
+  refreshAnnotationList();
+  render();
+  setStatus(`added ${chosen.length} detection(s) as annotations`);
 });
 
 propagateBtn.addEventListener("click", async () => {

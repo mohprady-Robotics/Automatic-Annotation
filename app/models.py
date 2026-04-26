@@ -62,3 +62,24 @@ class ExportResponse(BaseModel):
     session_id: str
     filename: str
     download_url: str
+
+
+class OpenVocabDetectRequest(BaseModel):
+    session_id: str
+    frame_index: int = Field(ge=0)
+    text_prompt: str = Field(min_length=1)
+    box_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    text_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    top_k: int = Field(default=20, ge=1, le=200)
+
+
+class OpenVocabDetection(BaseModel):
+    label: str = Field(min_length=1)
+    score: float = Field(ge=0.0, le=1.0)
+    bbox: List[float] = Field(min_length=4, max_length=4)
+
+
+class OpenVocabDetectResponse(BaseModel):
+    session_id: str
+    frame_index: int
+    detections: List[OpenVocabDetection]

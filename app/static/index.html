@@ -48,6 +48,28 @@
         </div>
 
         <div class="panel">
+          <h2>2b) Open-vocabulary detect (Grounding DINO)</h2>
+          <label for="openVocabPromptInput">Text prompt</label>
+          <input id="openVocabPromptInput" type="text" placeholder="person . bicycle . dog" />
+          <div class="tool-row">
+            <label for="openVocabBoxThresholdInput">Box threshold</label>
+            <input id="openVocabBoxThresholdInput" type="text" value="0.30" />
+          </div>
+          <div class="tool-row">
+            <label for="openVocabTextThresholdInput">Text threshold</label>
+            <input id="openVocabTextThresholdInput" type="text" value="0.25" />
+          </div>
+          <div class="tool-row">
+            <button id="detectOpenVocabBtn">Detect Prompt on Frame</button>
+            <button id="addSelectedDetectionsBtn">Add Selected Detections</button>
+          </div>
+          <p class="hint">
+            Runs text prompt detection on current frame. Select suggested boxes and add them as manual annotations.
+          </p>
+          <div id="openVocabDetections"></div>
+        </div>
+
+        <div class="panel">
           <h2>3) Propagate + Export</h2>
           <button id="propagateBtn">Propagate with SAM2</button>
           <button id="exportBtn">Export JSON</button>

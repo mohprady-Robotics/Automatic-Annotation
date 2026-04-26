@@ -147,3 +147,33 @@ canvas {
   font-size: 13px;
   background: #f9fafb;
 }
+
+#openVocabDetections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.detection-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 13px;
+  background: #f8fafc;
+}
+
+.detection-row input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.detection-row .meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
