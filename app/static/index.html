@@ -74,6 +74,27 @@
         </div>
 
         <div class="panel">
+          <h2>2c) Interactive SAM refinement (clicks)</h2>
+          <label class="checkbox-label">
+            <input id="samRefineModeInput" type="checkbox" />
+            Enable SAM click mode on canvas
+          </label>
+          <div class="tool-row">
+            <button id="samPositiveModeBtn" class="tool-btn active">Positive Clicks</button>
+            <button id="samNegativeModeBtn" class="tool-btn">Negative Clicks</button>
+          </div>
+          <div class="tool-row">
+            <button id="runSamRefineBtn">Run SAM Refinement</button>
+            <button id="clearSamClicksBtn">Clear SAM Clicks</button>
+            <button id="addSamMaskBtn">Add SAM Mask as Annotation</button>
+          </div>
+          <p class="hint">
+            Click positives on target and negatives on background. Run refinement, inspect preview mask, then add.
+          </p>
+          <div id="samClicksInfo">SAM clicks: 0 positive, 0 negative</div>
+        </div>
+
+        <div class="panel">
           <h2>3) Propagate + Export</h2>
           <button id="propagateBtn">Propagate with SAM2</button>
           <button id="exportBtn">Export JSON</button>

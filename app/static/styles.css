@@ -75,6 +75,12 @@ input[type="text"] {
   margin: 0;
 }
 
+#samClicksInfo {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #374151;
+}
+
 button {
   border: 1px solid #2563eb;
   background: #3b82f6;

@@ -159,3 +159,102 @@ def segment_box_to_polygon(
             return polygon
     except Exception:
         return None
+
+
+def _to_device_batch(inputs, device: str):
+    if hasattr(inputs, "to"):
+        try:
+            return inputs.to(device)
+        except Exception:
+            pass
+    if isinstance(inputs, dict):
+        return {k: (v.to(device) if hasattr(v, "to") else v) for k, v in inputs.items()}
+    return inputs
+
+
+def _select_best_mask(mask_candidates, outputs) -> np.ndarray:
+    if mask_candidates.ndim == 2:
+        return mask_candidates
+    best_idx = 0
+    try:
+        iou_scores = outputs.iou_scores
+        if hasattr(iou_scores, "detach"):
+            iou_scores = iou_scores.detach()
+        if hasattr(iou_scores, "cpu"):
+            iou_scores = iou_scores.cpu()
+        iou_np = np.asarray(iou_scores).reshape(-1)
+        if len(iou_np) > 0:
+            best_idx = int(np.argmax(iou_np))
+    except Exception:
+        best_idx = 0
+    best_idx = max(0, min(best_idx, mask_candidates.shape[0] - 1))
+    return mask_candidates[best_idx]
+
+
+def segment_with_clicks_to_polygon(
+    frame_path: str,
+    positive_points: List[List[float]],
+    negative_points: List[List[float]] | None = None,
+    input_box: List[float] | None = None,
+) -> List[List[float]] | None:
+    """
+    Interactive SAM refinement using positive/negative clicks and optional box prompt.
+    Returns a polygon approximation for the best predicted mask.
+    """
+    if not sam_mask_available():
+        return None
+    if not positive_points:
+        return None
+
+    bundle = _load_sam_bundle()
+    if bundle is None:
+        return None
+
+    torch = bundle["torch"]
+    processor = bundle["processor"]
+    model = bundle["model"]
+    device = bundle["device"]
+
+    negatives = negative_points or []
+    all_points = [[float(x), float(y)] for x, y in positive_points] + [
+        [float(x), float(y)] for x, y in negatives
+    ]
+    labels = [1] * len(positive_points) + [0] * len(negatives)
+    if not all_points:
+        return None
+
+    try:
+        with Image.open(frame_path) as image:
+            rgb = image.convert("RGB")
+            kwargs = {
+                "images": rgb,
+                "input_points": [all_points],
+                "input_labels": [labels],
+                "return_tensors": "pt",
+            }
+            if input_box and len(input_box) == 4:
+                kwargs["input_boxes"] = [[[float(v) for v in input_box]]]
+
+            inputs = processor(**kwargs)
+            inputs = _to_device_batch(inputs, device)
+
+            with torch.inference_mode():
+                outputs = model(**inputs)
+
+            masks = processor.image_processor.post_process_masks(
+                outputs.pred_masks.cpu(),
+                inputs["original_sizes"].cpu(),
+                inputs["reshaped_input_sizes"].cpu(),
+            )
+            mask_candidates = masks[0]
+            if hasattr(mask_candidates, "cpu"):
+                mask_candidates = mask_candidates.cpu().numpy()
+            else:
+                mask_candidates = np.asarray(mask_candidates)
+
+            best_mask = _select_best_mask(mask_candidates, outputs)
+            mask = best_mask > 0
+            mask = _largest_connected_component(mask.astype(np.uint8))
+            return _mask_to_polygon(mask)
+    except Exception:
+        return None

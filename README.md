@@ -52,9 +52,13 @@ In the UI:
    - run detection on current frame
    - optionally enable SAM mask generation to get polygon masks
    - select suggested detections and add them as manual annotations
-5. Click **Propagate with SAM2**.
-6. Review each frame and manually add/delete as needed.
-7. Click **Export JSON** and download the final output.
+5. Use **Interactive SAM refinement (clicks)** for hard cases:
+   - enable SAM click mode
+   - add positive clicks on target and negative clicks on distractors/background
+   - run refinement and add the mask as polygon annotation
+6. Click **Propagate with SAM2**.
+7. Review each frame and manually add/delete as needed.
+8. Click **Export JSON** and download the final output.
 
 ---
 
@@ -117,6 +121,10 @@ Grounding DINO is required by the backend for:
 SAM mask extraction is used for higher-accuracy segmentation polygons:
 - open-vocabulary detections can include polygons (`use_sam_masks=true`)
 - propagation can emit polygon annotations when SAM masks are available
+- interactive click refinement endpoint:
+  - `POST /api/sam/refine`
+  - input: positive/negative click points (+ optional box)
+  - output: refined polygon + bbox
 
 If Grounding DINO is unavailable, `/api/propagate` and `/api/open_vocab/detect` return an error.
 
@@ -124,6 +132,11 @@ The GUI also supports **open-vocabulary prompt detections** through Grounding DI
 - panel: `2b) Open-vocabulary detect (Grounding DINO)`
 - endpoint: `POST /api/open_vocab/detect`
 - detections can be selected and converted into manual annotations before propagation.
+
+Interactive SAM click refinement is available in:
+- panel: `2c) Interactive SAM refinement (clicks)`
+- positive/negative click modes on canvas
+- refinement preview polygon before committing annotation
 
 Environment variables:
 

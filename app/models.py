@@ -85,3 +85,29 @@ class OpenVocabDetectResponse(BaseModel):
     session_id: str
     frame_index: int
     detections: List[OpenVocabDetection]
+
+
+class SamRefineRequest(BaseModel):
+    session_id: str
+    frame_index: int = Field(ge=0)
+    positive_points: List[List[float]] = Field(min_length=1)
+    negative_points: List[List[float]] = Field(default_factory=list)
+    input_box: Optional[List[float]] = Field(default=None, min_length=4, max_length=4)
+    label: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_points(self) -> "SamRefineRequest":
+        for point in self.positive_points:
+            if len(point) != 2:
+                raise ValueError("Each positive point must be [x, y].")
+        for point in self.negative_points:
+            if len(point) != 2:
+                raise ValueError("Each negative point must be [x, y].")
+        return self
+
+
+class SamRefineResponse(BaseModel):
+    session_id: str
+    frame_index: int
+    polygon: Optional[List[List[float]]]
+    bbox: Optional[List[float]]

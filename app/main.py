@@ -24,6 +24,8 @@ from app.models import (
     OpenVocabDetection,
     PropagateRequest,
     PropagateResponse,
+    SamRefineRequest,
+    SamRefineResponse,
     SessionCreateResponse,
 )
 from app.grounding_dino_service import (
@@ -31,7 +33,7 @@ from app.grounding_dino_service import (
     get_last_grounding_dino_error,
     grounding_dino_status,
 )
-from app.sam_mask_service import segment_box_to_polygon
+from app.sam_mask_service import segment_box_to_polygon, segment_with_clicks_to_polygon
 from app.sam2_service import propagate_annotations
 
 
@@ -227,6 +229,41 @@ def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectRespons
         session_id=request.session_id,
         frame_index=request.frame_index,
         detections=normalized,
+    )
+
+
+@app.post("/api/sam/refine", response_model=SamRefineResponse)
+def sam_refine(request: SamRefineRequest) -> SamRefineResponse:
+    session = SESSIONS.get(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Unknown session: {request.session_id}")
+    if request.frame_index < 0 or request.frame_index >= len(session.frame_paths):
+        raise HTTPException(status_code=400, detail=f"Invalid frame index {request.frame_index}.")
+
+    frame_path = str(session.frame_paths[request.frame_index])
+    polygon = segment_with_clicks_to_polygon(
+        frame_path=frame_path,
+        positive_points=request.positive_points,
+        negative_points=request.negative_points,
+        input_box=request.input_box,
+    )
+    if not polygon or len(polygon) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "SAM refinement failed to produce a mask. "
+                "Try adding more positive/negative clicks around the target."
+            ),
+        )
+
+    xs = [point[0] for point in polygon]
+    ys = [point[1] for point in polygon]
+    bbox = [float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))]
+    return SamRefineResponse(
+        session_id=request.session_id,
+        frame_index=request.frame_index,
+        polygon=polygon,
+        bbox=bbox,
     )
 
 

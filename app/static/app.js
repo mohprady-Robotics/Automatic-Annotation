@@ -14,6 +14,12 @@ const state = {
   annotationsByFrame: {},
   openVocabDetectionsByFrame: {},
   openVocabSelectedDetectionIds: {},
+  samRefine: {
+    enabled: false,
+    clickMode: "positive",
+    pointsByFrame: {},
+    previewByFrame: {},
+  },
 };
 
 const canvas = document.getElementById("canvas");
@@ -45,6 +51,13 @@ const openVocabUseSamMasksInput = document.getElementById("openVocabUseSamMasksI
 const detectOpenVocabBtn = document.getElementById("detectOpenVocabBtn");
 const addSelectedDetectionsBtn = document.getElementById("addSelectedDetectionsBtn");
 const openVocabDetections = document.getElementById("openVocabDetections");
+const samRefineModeInput = document.getElementById("samRefineModeInput");
+const samPositiveModeBtn = document.getElementById("samPositiveModeBtn");
+const samNegativeModeBtn = document.getElementById("samNegativeModeBtn");
+const runSamRefineBtn = document.getElementById("runSamRefineBtn");
+const clearSamClicksBtn = document.getElementById("clearSamClicksBtn");
+const addSamMaskBtn = document.getElementById("addSamMaskBtn");
+const samClicksInfo = document.getElementById("samClicksInfo");
 
 function setStatus(text) {
   statusText.textContent = `Status: ${text}`;
@@ -68,6 +81,29 @@ function currentFrameAnnotations() {
 
 function generateAnnotationId(trackId, frameIndex) {
   return `${trackId}_${frameIndex}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function currentFrameSamPoints() {
+  const key = String(state.currentFrame);
+  if (!state.samRefine.pointsByFrame[key]) {
+    state.samRefine.pointsByFrame[key] = { positive: [], negative: [] };
+  }
+  return state.samRefine.pointsByFrame[key];
+}
+
+function currentFrameSamPreview() {
+  return state.samRefine.previewByFrame[String(state.currentFrame)] || null;
+}
+
+function setSamClickMode(mode) {
+  state.samRefine.clickMode = mode;
+  samPositiveModeBtn.classList.toggle("active", mode === "positive");
+  samNegativeModeBtn.classList.toggle("active", mode === "negative");
+}
+
+function refreshSamClicksInfo() {
+  const points = currentFrameSamPoints();
+  samClicksInfo.textContent = `SAM clicks: ${points.positive.length} positive, ${points.negative.length} negative`;
 }
 
 function currentFrameOpenVocabDetections() {
@@ -199,6 +235,11 @@ function render() {
     }
   }
 
+  const samPreview = currentFrameSamPreview();
+  if (samPreview && samPreview.polygon && samPreview.polygon.length >= 3) {
+    drawPolygon(samPreview.polygon, "rgb(168, 85, 247)", 3, 0.22);
+  }
+
   for (const annotation of currentFrameAnnotations()) {
     const isSelected = annotation.id === state.selectedAnnotationId;
     const baseColor = hslToRgbString(colorForTrack(annotation.track_id));
@@ -250,6 +291,32 @@ function render() {
       ctx.arc(point[0], point[1], 3, 0, Math.PI * 2);
       ctx.fillStyle = "#ef4444";
       ctx.fill();
+    }
+  }
+
+  if (state.samRefine.enabled) {
+    const samPoints = currentFrameSamPoints();
+    for (const point of samPoints.positive) {
+      ctx.beginPath();
+      ctx.arc(point[0], point[1], 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#22c55e";
+      ctx.fill();
+      ctx.strokeStyle = "#14532d";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    for (const point of samPoints.negative) {
+      ctx.beginPath();
+      ctx.arc(point[0], point[1], 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#ef4444";
+      ctx.fill();
+      ctx.strokeStyle = "#7f1d1d";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    const preview = currentFrameSamPreview();
+    if (preview && preview.polygon && preview.polygon.length >= 3) {
+      drawPolygon(preview.polygon, "rgb(168,85,247)", 2, 0.16);
     }
   }
 }
@@ -379,6 +446,7 @@ async function loadFrame(frameIndex) {
   state.selectedAnnotationId = null;
   state.draftPolygon = [];
   state.draftRect = null;
+  refreshSamClicksInfo();
   updateSelectedInfo();
   refreshAnnotationList();
   refreshOpenVocabDetectionsList();
@@ -439,6 +507,16 @@ function addPolygon(points) {
 canvas.addEventListener("mousedown", (evt) => {
   if (!state.imageElement) return;
   const point = clampPoint(getPointerPosition(evt));
+
+  if (state.samRefine.enabled) {
+    const samPoints = currentFrameSamPoints();
+    const slot = state.samRefine.clickMode === "negative" ? samPoints.negative : samPoints.positive;
+    slot.push([point.x, point.y]);
+    state.samRefine.previewByFrame[String(state.currentFrame)] = null;
+    refreshSamClicksInfo();
+    render();
+    return;
+  }
 
   if (state.tool === "select") {
     state.selectedAnnotationId = selectAnnotationAtPoint(point);
@@ -549,6 +627,8 @@ loadSessionBtn.addEventListener("click", async () => {
     state.annotationsByFrame = {};
     state.openVocabDetectionsByFrame = {};
     state.openVocabSelectedDetectionIds = {};
+    state.samRefine.pointsByFrame = {};
+    state.samRefine.previewByFrame = {};
     sessionMeta.textContent = `session=${payload.session_id} | frames=${payload.frame_count} | size=${payload.width}x${payload.height}`;
     await loadFrame(0);
     setStatus("session loaded");
@@ -658,6 +738,101 @@ addSelectedDetectionsBtn.addEventListener("click", () => {
   setStatus(`added ${chosen.length} detection(s) as annotations`);
 });
 
+samRefineModeInput.addEventListener("change", () => {
+  state.samRefine.enabled = Boolean(samRefineModeInput.checked);
+  setStatus(state.samRefine.enabled ? "SAM click mode enabled" : "SAM click mode disabled");
+  render();
+});
+
+samPositiveModeBtn.addEventListener("click", () => setSamClickMode("positive"));
+samNegativeModeBtn.addEventListener("click", () => setSamClickMode("negative"));
+
+clearSamClicksBtn.addEventListener("click", () => {
+  const key = String(state.currentFrame);
+  state.samRefine.pointsByFrame[key] = { positive: [], negative: [] };
+  state.samRefine.previewByFrame[key] = null;
+  refreshSamClicksInfo();
+  render();
+  setStatus("cleared SAM clicks on current frame");
+});
+
+runSamRefineBtn.addEventListener("click", async () => {
+  if (!state.sessionId) {
+    setStatus("load a session first");
+    return;
+  }
+  const points = currentFrameSamPoints();
+  if (points.positive.length === 0) {
+    setStatus("add at least one positive click");
+    return;
+  }
+  try {
+    setStatus("running interactive SAM refinement...");
+    let inputBox = null;
+    const selected = currentFrameAnnotations().find((annotation) => annotation.id === state.selectedAnnotationId);
+    if (selected) {
+      if (selected.shape_type === "bbox" && selected.bbox) {
+        inputBox = selected.bbox;
+      } else if (selected.shape_type === "polygon" && selected.polygon && selected.polygon.length >= 3) {
+        const xs = selected.polygon.map((point) => point[0]);
+        const ys = selected.polygon.map((point) => point[1]);
+        inputBox = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+      }
+    }
+    const response = await fetch("/api/sam/refine", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        frame_index: state.currentFrame,
+        positive_points: points.positive,
+        negative_points: points.negative,
+        input_box: inputBox,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.detail || "SAM refinement failed.");
+    }
+    state.samRefine.previewByFrame[String(state.currentFrame)] = {
+      polygon: payload.polygon,
+      bbox: payload.bbox,
+    };
+    render();
+    setStatus("SAM refinement preview ready");
+  } catch (error) {
+    setStatus(error.message);
+  }
+});
+
+addSamMaskBtn.addEventListener("click", () => {
+  if (!state.sessionId) {
+    setStatus("load a session first");
+    return;
+  }
+  const preview = currentFrameSamPreview();
+  if (!preview || !preview.polygon || preview.polygon.length < 3) {
+    setStatus("run SAM refinement first");
+    return;
+  }
+  const label = labelInput.value.trim() || "refined_object";
+  const trackId = state.nextTrackId;
+  state.nextTrackId += 1;
+  currentFrameAnnotations().push({
+    id: generateAnnotationId(trackId, state.currentFrame),
+    track_id: trackId,
+    label,
+    frame_index: state.currentFrame,
+    shape_type: "polygon",
+    source: "manual",
+    bbox: null,
+    polygon: preview.polygon,
+  });
+  refreshAnnotationList();
+  render();
+  setStatus("added SAM refined mask as polygon annotation");
+});
+
 propagateBtn.addEventListener("click", async () => {
   if (!state.sessionId) {
     setStatus("load a session first");
@@ -684,6 +859,7 @@ propagateBtn.addEventListener("click", async () => {
       throw new Error(payload.detail || "Propagation failed.");
     }
     state.annotationsByFrame = payload.frames;
+    state.samRefine.previewByFrame[String(state.currentFrame)] = null;
     let maxTrack = 0;
     Object.values(state.annotationsByFrame).forEach((frameAnnotations) => {
       frameAnnotations.forEach((annotation) => {
@@ -727,4 +903,6 @@ exportBtn.addEventListener("click", async () => {
 });
 
 setTool("rect");
+setSamClickMode("positive");
+refreshSamClicksInfo();
 setStatus("idle");
