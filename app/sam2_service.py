@@ -233,6 +233,8 @@ def _propagate_with_sam2(
     sam2_ckpt = os.getenv("SAM2_CHECKPOINT")
     if not sam2_cfg or not sam2_ckpt:
         return None
+    sam2_cfg = sam2_cfg.strip()
+    sam2_ckpt = sam2_ckpt.strip()
     if not Path(sam2_ckpt).exists():
         return None
 

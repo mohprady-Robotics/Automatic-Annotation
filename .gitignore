@@ -3,3 +3,7 @@ __pycache__/
 app/data/exports/*.json
 venv/
 .venv/
+checkpoints/
+.env
+.env.*
+!.env.example

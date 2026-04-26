@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 from uuid import uuid4
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -28,6 +30,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "app" / "static"
 EXPORT_DIR = BASE_DIR / "app" / "data" / "exports"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / ".env.colab")
+if os.getenv("ANNOTATION_APP_ENV_FILE"):
+    load_dotenv(os.getenv("ANNOTATION_APP_ENV_FILE"))
 
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}

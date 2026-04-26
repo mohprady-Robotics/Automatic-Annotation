@@ -5,6 +5,8 @@ import time
 from pathlib import Path
 from subprocess import Popen
 
+from dotenv import load_dotenv
+
 
 def launch(
     host: str = "0.0.0.0",
@@ -29,6 +31,11 @@ def launch(
 
     project_root = Path(__file__).resolve().parent
     os.chdir(project_root)
+    load_dotenv(project_root / ".env")
+    load_dotenv(project_root / ".env.colab")
+    env_file_override = os.getenv("ANNOTATION_APP_ENV_FILE")
+    if env_file_override:
+        load_dotenv(env_file_override)
 
     command = [
         "python3",

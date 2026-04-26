@@ -53,19 +53,33 @@ In the UI:
 
 ## 3) Run from Google Colab / Jupyter
 
-Create a cell:
+### 3.1 Quick setup without SAM2 checkpoints (fallback propagation only)
 
 ```python
 !pip install -q -r requirements.txt
+from notebook_launcher import launch
+info = launch(port=8000, image_dir="/content/images")
+info
 ```
 
-Then:
+### 3.2 Full SAM2 setup (install + checkpoint download + env update)
+
+This downloads a SAM 2.1 checkpoint and writes `.env.colab` automatically.
+
+```python
+# Choose tiny, small, base_plus, or large
+!bash scripts/setup_sam2_colab.sh tiny
+```
+
+After running the script, start the app:
 
 ```python
 from notebook_launcher import launch
 info = launch(port=8000, image_dir="/content/images")
 info
 ```
+
+`notebook_launcher` auto-loads `.env.colab`, so SAM2 config and checkpoint paths are picked up automatically.
 
 For Colab, if you need public access:
 
@@ -80,21 +94,36 @@ Use `info["public_url"]` (or `info["local_url"]`) to open the app.
 
 ---
 
-## 4) Enable real SAM2 propagation (optional)
+## 4) SAM2 environment details
 
-The app can call SAM2 if it is installed and these env vars are set:
+The app reads environment variables from:
 
-- `SAM2_MODEL_CFG` (model config path, e.g. yaml)
-- `SAM2_CHECKPOINT` (checkpoint path, e.g. `.pt`)
+1. `.env`
+2. `.env.colab`
+3. optional override file specified via `ANNOTATION_APP_ENV_FILE`
 
-Example:
+Required for real SAM2 propagation:
 
-```bash
-export SAM2_MODEL_CFG="/path/to/sam2_hiera_l.yaml"
-export SAM2_CHECKPOINT="/path/to/sam2_hiera_large.pt"
-```
+- `SAM2_MODEL_CFG` (config path, e.g. `configs/sam2.1/sam2.1_hiera_t.yaml`)
+- `SAM2_CHECKPOINT` (absolute checkpoint file path)
 
 If SAM2 is missing or misconfigured, the app still works via the fallback propagator.
+
+### Setup script options
+
+```bash
+# Download one model (default: large)
+bash scripts/setup_sam2_colab.sh tiny
+
+# Download all SAM2.1 checkpoints
+DOWNLOAD_ALL=1 bash scripts/setup_sam2_colab.sh large
+
+# Reinstall SAM2 with full dependency resolution (may be heavy)
+FORCE_REINSTALL=1 bash scripts/setup_sam2_colab.sh tiny
+
+# Skip dependency install and only download/write env
+SKIP_DEP_INSTALL=1 bash scripts/setup_sam2_colab.sh small
+```
 
 ---
 
