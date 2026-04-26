@@ -26,7 +26,7 @@ from app.models import (
     PropagateResponse,
     SessionCreateResponse,
 )
-from app.grounding_dino_service import detect_boxes_for_text_prompt
+from app.grounding_dino_service import detect_boxes_for_text_prompt, grounding_dino_status
 from app.sam2_service import propagate_annotations
 
 
@@ -133,6 +133,13 @@ def get_frame(session_id: str, frame_index: int) -> FileResponse:
 
 @app.post("/api/propagate", response_model=PropagateResponse)
 def propagate(request: PropagateRequest) -> PropagateResponse:
+    gd_ready, gd_reason = grounding_dino_status()
+    if not gd_ready:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Grounding DINO is mandatory but unavailable: {gd_reason}",
+        )
+
     session = SESSIONS.get(request.session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Unknown session: {request.session_id}")
@@ -155,6 +162,13 @@ def propagate(request: PropagateRequest) -> PropagateResponse:
 
 @app.post("/api/open_vocab/detect", response_model=OpenVocabDetectResponse)
 def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectResponse:
+    gd_ready, gd_reason = grounding_dino_status()
+    if not gd_ready:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Grounding DINO is mandatory but unavailable: {gd_reason}",
+        )
+
     session = SESSIONS.get(request.session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Unknown session: {request.session_id}")
@@ -173,8 +187,8 @@ def open_vocab_detect(request: OpenVocabDetectRequest) -> OpenVocabDetectRespons
         raise HTTPException(
             status_code=400,
             detail=(
-                "Grounding DINO detection unavailable. Ensure ENABLE_GROUNDING_DINO=1 and "
-                "Grounding DINO dependencies/model are installed."
+                "Grounding DINO detection failed at runtime. "
+                "Check model downloads, thresholds, and prompt."
             ),
         )
 

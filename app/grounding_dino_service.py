@@ -31,6 +31,10 @@ def _as_float(name: str, default: float) -> float:
         return default
 
 
+def _default_model_id() -> str:
+    return os.getenv("GROUNDING_DINO_MODEL_ID", "IDEA-Research/grounding-dino-tiny").strip()
+
+
 @lru_cache(maxsize=1)
 def _load_model_bundle():
     try:
@@ -39,7 +43,7 @@ def _load_model_bundle():
     except Exception:
         return None
 
-    model_id = os.getenv("GROUNDING_DINO_MODEL_ID", "IDEA-Research/grounding-dino-tiny").strip()
+    model_id = _default_model_id()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     try:
         processor = AutoProcessor.from_pretrained(model_id)
@@ -55,6 +59,20 @@ def _load_model_bundle():
         "model": model,
         "device": device,
     }
+
+
+def grounding_dino_status() -> tuple[bool, str]:
+    if not _env_enabled("ENABLE_GROUNDING_DINO", default=True):
+        return False, "ENABLE_GROUNDING_DINO must be set to 1."
+    if _load_model_bundle() is None:
+        return (
+            False,
+            (
+                f"Unable to load Grounding DINO model '{_default_model_id()}'. "
+                "Install dependencies and ensure model download is available."
+            ),
+        )
+    return True, "ok"
 
 
 def _match_label(det_label: str, expected_labels: List[str]) -> str | None:
@@ -73,12 +91,10 @@ def detect_boxes_for_labels(frame_path: str, labels: Iterable[str]) -> Detection
     Returns detections keyed by normalized label.
     Each value is [(bbox_xyxy, score), ...].
     """
-    if not _env_enabled("ENABLE_GROUNDING_DINO", default=True):
+    is_ready, _reason = grounding_dino_status()
+    if not is_ready:
         return None
-
     bundle = _load_model_bundle()
-    if bundle is None:
-        return None
 
     normalized_labels = sorted({_normalize_label(label) for label in labels if label and label.strip()})
     if not normalized_labels:
@@ -144,12 +160,10 @@ def detect_boxes_for_text_prompt(
     Open-vocabulary detections for an arbitrary text prompt.
     Returns [(det_label, bbox_xyxy, score), ...] sorted by score descending.
     """
-    if not _env_enabled("ENABLE_GROUNDING_DINO", default=True):
+    is_ready, _reason = grounding_dino_status()
+    if not is_ready:
         return None
-
     bundle = _load_model_bundle()
-    if bundle is None:
-        return None
 
     prompt = text_prompt.strip().lower()
     if not prompt:

@@ -8,8 +8,8 @@ This project provides a local webapp for batch image annotation with:
 - Per-object label names
 - A **Propagate** action that applies SAM2-style propagation to all frames in the batch
   - Uses real SAM2 when configured
-  - Falls back to a built-in tracker if SAM2 is not available
-  - Optional Grounding DINO refinement can improve box accuracy in fallback mode
+  - Uses Grounding DINO-guided fallback tracking when SAM2 is not available
+  - Grounding DINO is mandatory for propagation and open-vocabulary detection
 - Manual cleanup after propagation (delete/add annotations)
 - JSON export containing:
   - all per-frame annotations
@@ -46,7 +46,7 @@ In the UI:
 1. Enter an image directory path available to the backend (example: `/content/images` on Colab).
 2. Click **Load Session**.
 3. Draw manual labels on a key frame.
-4. (Optional) Use **Open-vocabulary detect (Grounding DINO)**:
+4. Use **Open-vocabulary detect (Grounding DINO)**:
    - enter a text prompt (for example: `person . bicycle . dog`)
    - run detection on current frame
    - select suggested boxes and add them as manual annotations
@@ -58,16 +58,7 @@ In the UI:
 
 ## 3) Run from Google Colab / Jupyter
 
-### 3.1 Quick setup without SAM2 checkpoints (fallback propagation only)
-
-```python
-!pip install -q -r requirements.txt
-from notebook_launcher import launch
-info = launch(port=8000, image_dir="/content/images")
-info
-```
-
-### 3.2 Full SAM2 + Grounding DINO setup (install + checkpoint download + env update)
+### 3.1 Full SAM2 + Grounding DINO setup (install + checkpoint download + env update)
 
 This downloads a SAM 2.1 checkpoint and writes `.env.colab` automatically.
 By default, it also enables Grounding DINO-based box refinement.
@@ -113,12 +104,15 @@ Required for real SAM2 propagation:
 - `SAM2_MODEL_CFG` (config path, e.g. `configs/sam2.1/sam2.1_hiera_t.yaml`)
 - `SAM2_CHECKPOINT` (absolute checkpoint file path)
 
-If SAM2 is missing or misconfigured, the app still works via the fallback propagator.
+If SAM2 is missing or misconfigured, propagation continues with Grounding DINO-guided fallback tracking.
 
-### Grounding DINO refinement (optional but recommended)
+### Grounding DINO requirement
 
-When enabled, fallback propagation can refine tracked boxes with text-conditioned detections
-from Grounding DINO using each track's label text.
+Grounding DINO is required by the backend for:
+- fallback propagation (box refinement/tracking guidance)
+- open-vocabulary text prompt detections in the GUI
+
+If Grounding DINO is unavailable, `/api/propagate` and `/api/open_vocab/detect` return an error.
 
 The GUI also supports **open-vocabulary prompt detections** through Grounding DINO:
 - panel: `2b) Open-vocabulary detect (Grounding DINO)`
@@ -127,7 +121,7 @@ The GUI also supports **open-vocabulary prompt detections** through Grounding DI
 
 Environment variables:
 
-- `ENABLE_GROUNDING_DINO` (`1`/`0`)
+- `ENABLE_GROUNDING_DINO` (must be `1`)
 - `GROUNDING_DINO_MODEL_ID` (default `IDEA-Research/grounding-dino-tiny`)
 - `GROUNDING_DINO_BOX_THRESHOLD`
 - `GROUNDING_DINO_TEXT_THRESHOLD`
@@ -153,8 +147,6 @@ FORCE_REINSTALL=1 bash scripts/setup_sam2_colab.sh tiny
 # Skip dependency install and only download/write env
 SKIP_DEP_INSTALL=1 bash scripts/setup_sam2_colab.sh small
 
-# Disable Grounding DINO in setup
-WITH_GROUNDING_DINO=0 bash scripts/setup_sam2_colab.sh tiny
 ```
 
 ---
